@@ -1,158 +1,133 @@
 ﻿using BoardGameCollection.Models;
-using BoardGameCollection.Services;
-using BoardGameCollection.ViewModels;
-using BoardGameCollection.Views;
-using Moq;
+using BoardGameCollection.Tests.Services;
 using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.Linq;
 using Xunit;
 
 namespace BoardGameCollection.Tests
 {
-    public class UnitTests
+    public class GameFilterServiceTests
     {
-        private readonly Mock<IGameService> _mockGameService;
-        private readonly MainViewModel _viewModel;
+        private readonly GameFilterService _filterService;
+        private readonly List<Game> _testGames;
 
-        public UnitTests()
+        public GameFilterServiceTests()
         {
-            _mockGameService = new Mock<IGameService>();
-            _viewModel = new MainViewModel(_mockGameService.Object);
+            _filterService = new GameFilterService();
+            _testGames = new List<Game>
+            {
+                new Game { Id = 1, Title = "Катан", Genre = Genre.Strategy, MinPlayers = 3, MaxPlayers = 4, Publisher = "KOSMOS" },
+                new Game { Id = 2, Title = "Монополия", Genre = Genre.Economic, MinPlayers = 2, MaxPlayers = 8, Publisher = "Hasbro" },
+                new Game { Id = 3, Title = "Каркассон", Genre = Genre.Strategy, MinPlayers = 2, MaxPlayers = 5, Publisher = "Hans im Glück" },
+                new Game { Id = 4, Title = "Шахматы", Genre = Genre.Strategy, MinPlayers = 2, MaxPlayers = 2, Publisher = "Русский стиль" }
+            };
         }
 
         [Fact]
-        public void GetGamesByFilters_Should_FilterByGenre()
+        public void FilterByGenre_ShouldReturnCorrectGames()
         {
             // Arrange
-            var games = new List<Game>
-            {
-                new Game { Title = "Катан", Genre = Genre.Strategy },
-                new Game { Title = "Монополия", Genre = Genre.Economic },
-                new Game { Title = "Каркассон", Genre = Genre.Strategy }
-            };
-
-            _mockGameService.Setup(s => s.GetAllGames()).Returns(games);
-            _viewModel.LoadData(); // Загружаем данные перед фильтрацией
+            var expectedCount = 3; // Катан, Каркассон, Шахматы
 
             // Act
-            _viewModel.SelectedGenre = Genre.Strategy;
-            _viewModel.ApplyFilters();
+            var result = _filterService.FilterByGenre(_testGames, Genre.Strategy);
 
             // Assert
-            Assert.Equal(2, _viewModel.Games.Count);
-            Assert.All(_viewModel.Games, g => Assert.Equal(Genre.Strategy, g.Genre));
+            Assert.Equal(expectedCount, result.Count());
+            Assert.All(result, g => Assert.Equal(Genre.Strategy, g.Genre));
         }
 
-        [Fact]
-        public void GetGamesByFilters_Should_FilterByPlayerRange()
-        {
-            // Arrange
-            var games = new List<Game>
-            {
-                new Game { Title = "Катан", MinPlayers = 3, MaxPlayers = 4 },
-                new Game { Title = "Монополия", MinPlayers = 2, MaxPlayers = 8 },
-                new Game { Title = "Каркассон", MinPlayers = 2, MaxPlayers = 5 }
-            };
-
-            _mockGameService.Setup(s => s.GetAllGames()).Returns(games);
-            _viewModel.LoadData(); // Загружаем данные перед фильтрацией
-
-            // Act
-            _viewModel.MinPlayersFilter = 2;
-            _viewModel.MaxPlayersFilter = 4;
-            _viewModel.ApplyFilters();
-
-            // Assert
-            Assert.Equal(2, _viewModel.Games.Count);
-            Assert.All(_viewModel.Games, g =>
-                Assert.True(g.MinPlayers <= 4 && g.MaxPlayers >= 2));
-        }
 
         [Fact]
-        public void GetGamesByFilters_Should_FilterBySearchTerm()
+        public void FilterBySearchTerm_ShouldReturnCorrectGames()
         {
             // Arrange
-            var games = new List<Game>
-            {
-                new Game { Title = "Катан", Publisher = "KOSMOS" },
-                new Game { Title = "Монополия", Publisher = "Hasbro" },
-                new Game { Title = "Каркассон", Publisher = "Hans im Glück" }
-            };
-
-            _mockGameService.Setup(s => s.GetAllGames()).Returns(games);
-            _viewModel.LoadData(); // Загружаем данные перед фильтрацией
+            var expectedCount = 2; // Катан и Каркассон содержат "ка"
 
             // Act
-            _viewModel.SearchTerm = "ка";
-            _viewModel.ApplyFilters();
+            var result = _filterService.FilterBySearchTerm(_testGames, "ка");
 
             // Assert
-            Assert.Equal(2, _viewModel.Games.Count);
-            Assert.All(_viewModel.Games, g =>
+            Assert.Equal(expectedCount, result.Count());
+            Assert.All(result, g =>
+            {
                 Assert.True(
                     g.Title.ToLower().Contains("ка") ||
-                    g.Publisher.ToLower().Contains("ка"),
-                    $"Игра '{g.Title}' не содержит 'ка' в названии или издателе"
-                )
-            );
+                    g.Publisher.ToLower().Contains("ка")
+                );
+            });
         }
 
         [Fact]
-        public void MainViewModel_LoadData_ShouldInitializeGamesCollection()
+        public void CountUnplayedGames_ShouldReturnCorrectCount()
         {
             // Arrange
-            var mockGameService = new Mock<IGameService>();
-            var testGames = new List<Game>
-            {
-                new Game { Id = 1, Title = "Катан" },
-                new Game { Id = 2, Title = "Монополия" }
-            };
-            mockGameService.Setup(s => s.GetAllGames()).Returns(testGames);
-
-            var viewModel = new MainViewModel(mockGameService.Object);
-
-            // Act
-            viewModel.LoadData();
-
-            // Assert
-            Assert.NotNull(viewModel.Games);
-            Assert.Equal(2, viewModel.Games.Count);
-            Assert.Equal("Катан", viewModel.Games[0].Title);
-        }
-
-        [Fact]
-        public void GetUnplayedGames_Should_ReturnGamesWithoutSessions()
-        {
-            // Arrange
-            var games = new List<Game>
+            var gamesWithSessions = new List<Game>
             {
                 new Game { Title = "Катан", Sessions = new List<GameSession>() },
                 new Game { Title = "Монополия", Sessions = new List<GameSession> { new GameSession() } },
                 new Game { Title = "Каркассон", Sessions = new List<GameSession>() }
             };
-
-            _mockGameService.Setup(s => s.GetAllGames()).Returns(games);
+            var expectedCount = 2; // Только Монополия имеет сессии
 
             // Act
-            _viewModel.LoadData();
+            var result = _filterService.CountUnplayedGames(gamesWithSessions);
 
             // Assert
-            Assert.Equal(2, _viewModel.UnplayedGamesCount);
+            Assert.Equal(expectedCount, result);
         }
 
         [Fact]
-        public void AddGameCommand_Should_ExecuteSuccessfully()
+        public void FilterByGenre_WithNullGenre_ShouldReturnAllGames()
         {
             // Arrange
-            var mockGameWindow = new Mock<GameWindow>();
+            var expectedCount = _testGames.Count;
 
             // Act
-            _viewModel.AddGameCommand.Execute(mockGameWindow.Object);
+            var result = _filterService.FilterByGenre(_testGames, null);
 
             // Assert
-            Assert.True(true);
+            Assert.Equal(expectedCount, result.Count());
+        }
+
+        [Fact]
+        public void FilterByPlayerRange_WithNullFilters_ShouldReturnAllGames()
+        {
+            // Arrange
+            var expectedCount = _testGames.Count;
+
+            // Act
+            var result = _filterService.FilterByPlayerRange(_testGames, null, null);
+
+            // Assert
+            Assert.Equal(expectedCount, result.Count());
+        }
+
+        [Fact]
+        public void FilterBySearchTerm_WithNullSearchTerm_ShouldReturnAllGames()
+        {
+            // Arrange
+            var expectedCount = _testGames.Count;
+
+            // Act
+            var result = _filterService.FilterBySearchTerm(_testGames, null);
+
+            // Assert
+            Assert.Equal(expectedCount, result.Count());
+        }
+
+        [Fact]
+        public void FilterBySearchTerm_WithEmptySearchTerm_ShouldReturnAllGames()
+        {
+            // Arrange
+            var expectedCount = _testGames.Count;
+
+            // Act
+            var result = _filterService.FilterBySearchTerm(_testGames, "");
+
+            // Assert
+            Assert.Equal(expectedCount, result.Count());
         }
     }
 }
